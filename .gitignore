@@ -1,0 +1,11 @@
+**/build/
+**/cmake-build-*/
+**/.cache/
+**/compile_commands.json
+
+# Flex/Bison 生成文件由构建或评测流程生成，不作为作答源文件提交。
+Compiler-2026/task1/src/yacc/Flex.cpp
+Compiler-2026/task1/src/yacc/Bison.cpp
+Compiler-2026/task1/include/yacc/Flex.hpp
+Compiler-2026/task1/include/yacc/Bison.hpp
+Compiler-2026/task1/src/yacc/*.output
