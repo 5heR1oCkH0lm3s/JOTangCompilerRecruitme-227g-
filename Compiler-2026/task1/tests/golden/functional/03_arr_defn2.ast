@@ -1,0 +1,1 @@
+(CompUnit (VarDecl int (VarDefList (VarDef "a" (ArrayList (AddExp (Ops) (MulExp (Ops) (UnaryExp (Ops) (Int 10)))) (AddExp (Ops) (MulExp (Ops) (UnaryExp (Ops) (Int 10))))) (None)))) (FuncDef int "main" (None) (Block (BlockItemList (ReturnStmt (AddExp (Ops) (MulExp (Ops) (UnaryExp (Ops) (Int 0)))))))))

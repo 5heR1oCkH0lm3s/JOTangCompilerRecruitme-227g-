@@ -13,15 +13,6 @@ SysY 源文件
   → ASTRoot
 ```
 
-本题保留完整 SysY2022 的数组、浮点数、函数、控制流和表达式。原 JOTang 编译器中的 `tensor` 类型与 `@` 运算符不是 SysY2022 标准内容，不属于必做范围。
-
-## 资料
-
-- 本地语言定义：`docs/SysY2022语言定义-V1-3.pdf`
-- [SysY2022 运行时库](https://gitlab.eduxiji.net/csc1/nscscc/compiler2025/-/blob/main/SysY2022%E8%BF%90%E8%A1%8C%E6%97%B6%E5%BA%93-V1.pdf?ref_type=heads)
-- [Flex 官方项目与手册](https://github.com/westes/flex)
-- [GNU Bison 手册](https://www.gnu.org/software/bison/manual/)
-
 ## 目录
 
 ```text
@@ -32,17 +23,42 @@ task1/
 ├── docs/
 │   └── SysY2022语言定义-V1-3.pdf
 ├── include/
+│   ├── ASTPrinter.hpp
 │   ├── Frontend.hpp
-│   └── lib/
-│       └── AST.hpp
-└── src/yacc/
-    ├── sysy.l       # 等待实现
-    └── sysy.y       # 等待实现
+│   ├── lib/
+│   │   └── AST.hpp
+│   └── yacc/         # 生成 Flex.hpp 与 Bison.hpp
+├── scripts/
+│   └── test_frontend.py
+├── tests/
+│   ├── README.md
+│   ├── ast.sha256
+│   ├── golden/       # 少量可直接阅读的 AST 标准答案
+│   └── negative/     # 必须拒绝的非法程序
+└── src/
+    ├── lib/
+    │   └── ASTPrinter.cpp
+    └── yacc/
+        ├── sysy.l       # 等待实现
+        ├── sysy.y       # 等待实现
+        ├── Flex.cpp     # 生成文件
+        └── Bison.cpp    # 生成文件
 ```
 
 `AST.hpp` 提供 AST 节点、所有权接口和 Visitor 接口。原则上不应修改其公共接口；确有必要时，应在代码注释中说明原因。
 
-`main.cpp` 和 `Frontend.hpp` 定义了统一入口及 `ASTRoot`。完成 `.l/.y` 后，无需手工生成或提交 `Flex.cpp`、`Bison.cpp`；CMake 会在构建目录中调用 Flex/Bison。
+`main.cpp` 和 `Frontend.hpp` 定义了统一入口及 `ASTRoot`。`ASTPrinter` 负责将生成结果输出成稳定的 S-expression。完成 `.l/.y` 后，Flex/Bison 生成文件必须位于：
+
+```text
+src/yacc/Flex.cpp
+src/yacc/Bison.cpp
+include/yacc/Flex.hpp
+include/yacc/Bison.hpp
+```
+
+CMake 会自动执行生成步骤；也可以使用后文命令手动生成。这些生成文件不提交到 Git。
+
+输出路径已经由 CMake 和生成命令统一指定。请不要在 `.y` 中另写 `%output`、`%header`，也不要在 `.l` 中另写 `outfile`、`header-file`，否则相对路径可能随生成器的工作目录变化而失效。
 
 ## 与构建入口的接口约定
 
@@ -66,7 +82,7 @@ extern yy::parser::symbol_type yylex();
 ASTRoot = std::unique_ptr<CompUnit>(...);
 ```
 
-`sysy.l` 应包含生成的 `Bison.hpp`，并将扫描函数声明为：
+`sysy.l` 应包含 `yacc/Bison.hpp`，并将扫描函数声明为：
 
 ```cpp
 #define YY_DECL yy::parser::symbol_type yylex(void)
@@ -141,7 +157,17 @@ ASTRoot = std::unique_ptr<CompUnit>(...);
 
 ## 构建与运行
 
-完成 `sysy.l` 和 `sysy.y` 后，在本目录执行：
+完成 `sysy.l` 和 `sysy.y` 后，可以先手动生成文件：
+
+```bash
+mkdir -p include/yacc
+bison --defines=include/yacc/Bison.hpp \
+      --output=src/yacc/Bison.cpp src/yacc/sysy.y
+flex --header-file=include/yacc/Flex.hpp \
+     --outfile=src/yacc/Flex.cpp src/yacc/sysy.l
+```
+
+随后在本目录构建。即使跳过上面的手动命令，CMake 也会自动执行同等生成步骤：
 
 ```bash
 cmake -S . -B build
@@ -149,19 +175,37 @@ cmake --build build -j
 ./build/sysy_frontend path/to/test.sy
 ```
 
-分析成功后，`ASTRoot` 持有完整 AST，程序输出顶层节点数量，例如：
+分析成功后，`ASTRoot` 持有完整 AST，程序将 AST 输出为单行 S-expression，例如：
 
 ```text
-AST generated successfully: 2 top-level item(s)
+(CompUnit (FuncDef int "main" (None) (Block ...)))
 ```
 
-下一轮将加入 ASTPrinter，以及针对 Token 和具体 AST 节点结构的自动测试。
+## 批量测试
+
+`Compiler-2026/testcases26` 中包含 200 个 SysY 程序。运行：
+
+```bash
+python3 scripts/test_frontend.py
+```
+
+测试器会：
+
+1. 调用 CMake 生成并构建前端；
+2. 递归收集 `testcases26` 中的 `.sy`；
+3. 为每个用例单独运行前端并检查退出码；
+4. 检查 stdout 是否为规范化的 `(CompUnit ...)`；
+5. 对完整 AST 输出计算 SHA-256，并与参考摘要比较；
+6. 运行 `tests/negative` 中的非法程序，确认词法器和语法分析器会拒绝它们。
+
+`.in/.out` 用于完整编译器运行测试，本任务只检查前端，因此不会读取它们。更多选项见 `tests/README.md`。
 
 ## 必须完成
 
 1. `src/yacc/sysy.l`；
 2. `src/yacc/sysy.y`；
 3. 自行设计的正例与反例测试；
-4. 不提交手工修改的 Flex/Bison 生成文件。
+4. 能够通过 `scripts/test_frontend.py` 的批量测试；
+5. 不提交 Flex/Bison 生成文件。
 
 允许使用 Agent，但提交者必须能够解释和维护最终代码。后续考核会重点检查规范一致性、边界输入、文法冲突、AST 结构和错误处理，而不是代码行数。

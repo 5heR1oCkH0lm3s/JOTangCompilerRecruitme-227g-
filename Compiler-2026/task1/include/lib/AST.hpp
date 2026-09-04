@@ -5,11 +5,6 @@
 #include <utility>
 #include <vector>
 
-/*
- * 教学说明：本文件复用自现有 JOTang 编译器前端。ASTType::Tensor 与
- * SY_GEMM 是原项目为比赛扩展保留的兼容接口，不属于 Task 1 的
- * SysY2022 必做语法；学生实现标准 SysY2022 时可以不产生这些节点或操作符。
- */
 
 //SysY类型
 enum Type{

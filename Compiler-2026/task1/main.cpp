@@ -1,5 +1,6 @@
-#include "Bison.hpp"
+#include "ASTPrinter.hpp"
 #include "Frontend.hpp"
+#include "yacc/Bison.hpp"
 
 #include <cstdio>
 #include <exception>
@@ -59,9 +60,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // 下一轮的 ASTPrinter 和自动测试将从 ASTRoot 遍历并校验具体节点。
-    std::cout << "AST generated successfully: "
-              << ASTRoot->getItems().size()
-              << " top-level item(s)\n";
+    ASTPrinter printer(std::cout);
+    printer.print(*ASTRoot);
     return 0;
 }

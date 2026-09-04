@@ -9,21 +9,22 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(BISON 3.2 REQUIRED)
 find_package(FLEX 2.6 REQUIRED)
 
-set(GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
-file(MAKE_DIRECTORY "${GENERATED_DIR}")
+set(YACC_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/yacc")
+set(YACC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include/yacc")
+file(MAKE_DIRECTORY "${YACC_INCLUDE_DIR}")
 
 BISON_TARGET(
     SysYParser
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/yacc/sysy.y"
-    "${GENERATED_DIR}/Bison.cpp"
-    DEFINES_FILE "${GENERATED_DIR}/Bison.hpp"
+    "${YACC_SOURCE_DIR}/sysy.y"
+    "${YACC_SOURCE_DIR}/Bison.cpp"
+    DEFINES_FILE "${YACC_INCLUDE_DIR}/Bison.hpp"
 )
 
 FLEX_TARGET(
     SysYLexer
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/yacc/sysy.l"
-    "${GENERATED_DIR}/Flex.cpp"
-    DEFINES_FILE "${GENERATED_DIR}/Flex.hpp"
+    "${YACC_SOURCE_DIR}/sysy.l"
+    "${YACC_SOURCE_DIR}/Flex.cpp"
+    DEFINES_FILE "${YACC_INCLUDE_DIR}/Flex.hpp"
 )
 
 ADD_FLEX_BISON_DEPENDENCY(SysYLexer SysYParser)
@@ -31,6 +32,7 @@ ADD_FLEX_BISON_DEPENDENCY(SysYLexer SysYParser)
 add_executable(
     sysy_frontend
     main.cpp
+    src/lib/ASTPrinter.cpp
     ${BISON_SysYParser_OUTPUTS}
     ${FLEX_SysYLexer_OUTPUTS}
 )
@@ -39,7 +41,7 @@ target_include_directories(
     sysy_frontend
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
-        "${GENERATED_DIR}"
+        "${YACC_INCLUDE_DIR}"
 )
 
 if(FLEX_LIBRARIES)
