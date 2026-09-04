@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""批量验证 SysY 前端能否解析 testcases26 并生成规范化 AST。"""
-
 from __future__ import annotations
 
 import argparse

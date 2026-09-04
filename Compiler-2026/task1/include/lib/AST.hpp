@@ -44,7 +44,6 @@ enum class ASTScalarKind {
 enum class ASTTypeKind {
     Invalid,
     Scalar,
-    Tensor,
 };
 
 class ASTType {
@@ -59,13 +58,11 @@ public:
     explicit ASTType(Type legacyType);
 
     static ASTType makeScalar(ASTScalarKind scalarKind);
-    static ASTType makeTensor(ASTScalarKind elementKind);
 
     ASTTypeKind getKind() const;
     ASTScalarKind getScalarKind() const;
     bool isValid() const;
     bool isScalar() const;
-    bool isTensor() const;
     bool isVoid() const;
 };
 
@@ -101,13 +98,6 @@ inline ASTType ASTType::makeScalar(ASTScalarKind scalarKind) {
     return ASTType(ASTTypeKind::Scalar, scalarKind);
 }
 
-inline ASTType ASTType::makeTensor(ASTScalarKind elementKind) {
-    if (elementKind != ASTScalarKind::Int32 &&
-        elementKind != ASTScalarKind::Float32)
-        return ASTType();
-    return ASTType(ASTTypeKind::Tensor, elementKind);
-}
-
 inline ASTTypeKind ASTType::getKind() const { return kind; }
 
 inline ASTScalarKind ASTType::getScalarKind() const { return scalarKind; }
@@ -117,18 +107,11 @@ inline bool ASTType::isValid() const {
         return scalarKind == ASTScalarKind::Int32 ||
                 scalarKind == ASTScalarKind::Float32 ||
                 scalarKind == ASTScalarKind::Void;
-    if (kind == ASTTypeKind::Tensor)
-        return scalarKind == ASTScalarKind::Int32 ||
-               scalarKind == ASTScalarKind::Float32;
     return false;
 }
 
 inline bool ASTType::isScalar() const {
     return kind == ASTTypeKind::Scalar;
-}
-
-inline bool ASTType::isTensor() const {
-    return kind == ASTTypeKind::Tensor;
 }
 
 inline bool ASTType::isVoid() const {

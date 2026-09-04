@@ -22,8 +22,6 @@ void ASTPrinter::printType(const ASTType& type) {
         output << "invalid";
         return;
     }
-    if (type.isTensor())
-        output << "tensor-";
     switch (type.getScalarKind()) {
     case ASTScalarKind::Int32:
         output << "int";
