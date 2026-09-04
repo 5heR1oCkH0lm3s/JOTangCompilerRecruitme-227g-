@@ -20,6 +20,7 @@ task1/
 ├── CMakeLists.txt
 ├── main.cpp
 ├── README.md
+├── test_frontend.py
 ├── docs/
 │   └── SysY2022语言定义-V1-3.pdf
 ├── include/
@@ -28,8 +29,6 @@ task1/
 │   ├── lib/
 │   │   └── AST.hpp
 │   └── yacc/         # 生成 Flex.hpp 与 Bison.hpp
-├── scripts/
-│   └── test_frontend.py
 ├── tests/
 │   ├── README.md
 │   ├── ast.sha256
@@ -56,9 +55,11 @@ include/yacc/Flex.hpp
 include/yacc/Bison.hpp
 ```
 
-CMake 会自动执行生成步骤；也可以使用后文命令手动生成。这些生成文件不提交到 Git。
+CMake 不会调用 Flex/Bison。学生必须先使用后文命令手工生成这四个文件，再配置和构建项目。这些生成文件不提交到 Git。
 
-输出路径已经由 CMake 和生成命令统一指定。请不要在 `.y` 中另写 `%output`、`%header`，也不要在 `.l` 中另写 `outfile`、`header-file`，否则相对路径可能随生成器的工作目录变化而失效。
+每次修改 `sysy.l` 或 `sysy.y` 后，都需要重新执行对应的生成命令；CMake 只编译现有生成文件，不会检查并重新生成它们。
+
+输出路径由后文的生成命令统一指定。请不要在 `.y` 中另写 `%output`、`%header`，也不要在 `.l` 中另写 `outfile`、`header-file`，避免其路径与命令行参数冲突。
 
 ## 与构建入口的接口约定
 
@@ -157,17 +158,17 @@ ASTRoot = std::unique_ptr<CompUnit>(...);
 
 ## 构建与运行
 
-完成 `sysy.l` 和 `sysy.y` 后，可以先手动生成文件：
+完成 `sysy.l` 和 `sysy.y` 后，必须在 `task1` 根目录依次手动生成文件：
 
 ```bash
-mkdir -p include/yacc
+mkdir -p include/yacc src/yacc
 bison --defines=include/yacc/Bison.hpp \
       --output=src/yacc/Bison.cpp src/yacc/sysy.y
 flex --header-file=include/yacc/Flex.hpp \
      --outfile=src/yacc/Flex.cpp src/yacc/sysy.l
 ```
 
-随后在本目录构建。即使跳过上面的手动命令，CMake 也会自动执行同等生成步骤：
+确认四个生成文件位于规定目录后，再由学生手动配置并构建：
 
 ```bash
 cmake -S . -B build
@@ -186,17 +187,19 @@ cmake --build build -j
 `Compiler-2026/testcases26` 中包含 200 个 SysY 程序。运行：
 
 ```bash
-python3 scripts/test_frontend.py
+python3 test_frontend.py
 ```
 
 测试器会：
 
-1. 调用 CMake 生成并构建前端；
+1. 使用学生已经构建好的 `build/sysy_frontend`；
 2. 递归收集 `testcases26` 中的 `.sy`；
 3. 为每个用例单独运行前端并检查退出码；
 4. 检查 stdout 是否为规范化的 `(CompUnit ...)`；
 5. 对完整 AST 输出计算 SHA-256，并与参考摘要比较；
 6. 运行 `tests/negative` 中的非法程序，确认词法器和语法分析器会拒绝它们。
+
+测试脚本不会生成 Flex/Bison 文件，也不会调用 CMake。若可执行文件不在默认位置，可使用 `--compiler` 显式指定。
 
 `.in/.out` 用于完整编译器运行测试，本任务只检查前端，因此不会读取它们。更多选项见 `tests/README.md`。
 
@@ -205,7 +208,7 @@ python3 scripts/test_frontend.py
 1. `src/yacc/sysy.l`；
 2. `src/yacc/sysy.y`；
 3. 自行设计的正例与反例测试；
-4. 能够通过 `scripts/test_frontend.py` 的批量测试；
+4. 能够通过 `test_frontend.py` 的批量测试；
 5. 不提交 Flex/Bison 生成文件。
 
 允许使用 Agent，但提交者必须能够解释和维护最终代码。后续考核会重点检查规范一致性、边界输入、文法冲突、AST 结构和错误处理，而不是代码行数。

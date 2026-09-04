@@ -15,7 +15,7 @@ from difflib import unified_diff
 from pathlib import Path
 
 
-TASK_ROOT = Path(__file__).resolve().parents[1]
+TASK_ROOT = Path(__file__).resolve().parent
 DEFAULT_TEST_ROOT = TASK_ROOT.parent / "testcases26"
 DEFAULT_BUILD_DIR = TASK_ROOT / "build"
 DEFAULT_MANIFEST = TASK_ROOT / "tests" / "ast.sha256"
@@ -32,13 +32,12 @@ class CaseResult:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="构建 task1，并批量校验 testcases26 中每个 .sy 的 AST 输出。"
+        description="批量校验 testcases26 中每个 .sy 的 AST 输出。"
     )
     parser.add_argument("--test-root", type=Path, default=DEFAULT_TEST_ROOT)
-    parser.add_argument("--build-dir", type=Path, default=DEFAULT_BUILD_DIR)
-    parser.add_argument("--compiler", type=Path)
+    parser.add_argument("--compiler", type=Path,
+                        default=DEFAULT_BUILD_DIR / "sysy_frontend")
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
-    parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--no-golden", action="store_true",
                         help="只检查解析成功和 AST 基本格式，不比较参考摘要")
     parser.add_argument("--no-negative", action="store_true",
@@ -49,51 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--jobs", type=int,
                         default=max(1, min(os.cpu_count() or 1, 8)))
     parser.add_argument("--timeout", type=float, default=10.0)
-    parser.add_argument("--build-timeout", type=float, default=180.0)
     return parser.parse_args()
-
-
-def run_setup(command: list[str], timeout: float) -> None:
-    result = subprocess.run(
-        command,
-        cwd=TASK_ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=timeout,
-    )
-    if result.returncode != 0:
-        print(result.stdout, end="", file=sys.stderr)
-        raise RuntimeError(
-            f"命令失败（退出码 {result.returncode}）：{' '.join(command)}"
-        )
-
-
-def build_frontend(build_dir: Path, timeout: float) -> Path:
-    print("[SETUP] configuring task1 ...")
-    run_setup(
-        ["cmake", "-S", str(TASK_ROOT), "-B", str(build_dir)], timeout
-    )
-    print("[SETUP] generating Flex/Bison sources and building ...")
-    run_setup(
-        ["cmake", "--build", str(build_dir), "-j", str(max(1, min(os.cpu_count() or 1, 8)))],
-        timeout,
-    )
-
-    generated_files = [
-        TASK_ROOT / "src/yacc/Flex.cpp",
-        TASK_ROOT / "src/yacc/Bison.cpp",
-        TASK_ROOT / "include/yacc/Flex.hpp",
-        TASK_ROOT / "include/yacc/Bison.hpp",
-    ]
-    missing = [str(path) for path in generated_files if not path.is_file()]
-    if missing:
-        raise RuntimeError("构建后缺少生成文件：\n" + "\n".join(missing))
-
-    compiler = build_dir / "sysy_frontend"
-    if not compiler.is_file():
-        raise RuntimeError(f"未找到前端可执行文件：{compiler}")
-    return compiler
 
 
 def load_manifest(path: Path) -> dict[str, str]:
@@ -257,20 +212,14 @@ def display_results(
 def main() -> int:
     args = parse_args()
     test_root = args.test_root.resolve()
-    build_dir = args.build_dir.resolve()
+    compiler = args.compiler.resolve()
 
     try:
-        if args.compiler:
-            compiler = args.compiler.resolve()
-            if not args.skip_build:
-                build_frontend(build_dir, args.build_timeout)
-        elif args.skip_build:
-            compiler = build_dir / "sysy_frontend"
-        else:
-            compiler = build_frontend(build_dir, args.build_timeout)
-
         if not compiler.is_file():
-            raise FileNotFoundError(f"前端可执行文件不存在：{compiler}")
+            raise FileNotFoundError(
+                f"前端可执行文件不存在：{compiler}\n"
+                "请先按 README.md 手工生成 Flex/Bison 文件并完成 CMake 构建。"
+            )
 
         expected = {} if args.no_golden else load_manifest(args.manifest.resolve())
         if not args.no_golden and not expected:
@@ -279,7 +228,7 @@ def main() -> int:
                 "若只想做解析冒烟测试，请使用 --no-golden"
             )
         cases = collect_cases(test_root, args.filter, args.max_cases)
-    except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+    except (OSError, RuntimeError, ValueError) as error:
         print(f"[SETUP ERROR] {error}", file=sys.stderr)
         return 2
 
