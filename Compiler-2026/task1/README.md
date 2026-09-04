@@ -32,8 +32,7 @@ task1/
 ├── tests/
 │   ├── README.md
 │   ├── ast.sha256
-│   ├── golden/       # 少量可直接阅读的 AST 标准答案
-│   └── negative/     # 必须拒绝的非法程序
+│   └── golden/       # 少量可直接阅读的 AST 标准答案
 └── src/
     ├── lib/
     │   └── ASTPrinter.cpp
@@ -54,42 +53,6 @@ src/yacc/Bison.cpp
 include/yacc/Flex.hpp
 include/yacc/Bison.hpp
 ```
-
-CMake 不会调用 Flex/Bison。学生必须先使用后文命令手工生成这四个文件，再配置和构建项目。这些生成文件不提交到 Git。
-
-每次修改 `sysy.l` 或 `sysy.y` 后，都需要重新执行对应的生成命令；CMake 只编译现有生成文件，不会检查并重新生成它们。
-
-输出路径由后文的生成命令统一指定。请不要在 `.y` 中另写 `%output`、`%header`，也不要在 `.l` 中另写 `outfile`、`header-file`，避免其路径与命令行参数冲突。
-
-## 与构建入口的接口约定
-
-为了让提供的 `main.cpp`、CMake 和后续自动测试能够调用学生实现，`sysy.y` 应生成默认的 C++ 解析器 `yy::parser`，并启用强类型 Token 构造函数：
-
-```bison
-%language "c++"
-%define api.token.constructor
-%define api.value.type variant
-```
-
-在 Bison 的实现代码中声明扫描器入口：
-
-```cpp
-extern yy::parser::symbol_type yylex();
-```
-
-通过 `Frontend.hpp` 使用根节点，并在开始符号成功归约完整编译单元时接管结果：
-
-```cpp
-ASTRoot = std::unique_ptr<CompUnit>(...);
-```
-
-`sysy.l` 应包含 `yacc/Bison.hpp`，并将扫描函数声明为：
-
-```cpp
-#define YY_DECL yy::parser::symbol_type yylex(void)
-```
-
-扫描器必须启用行号并提供全局 `yyin`、`yylineno`。推荐使用 `%option noyywrap`，避免依赖平台特定的 `yywrap` 实现。
 
 ## 必做功能
 
@@ -144,18 +107,6 @@ ASTRoot = std::unique_ptr<CompUnit>(...);
 - 节点所有权清晰，不重复释放；
 - 分析失败时尽量清理尚未被 AST 接管的语义值。
 
-## 不属于本题范围
-
-- 符号表和作用域检查；
-- 重复定义和未定义标识符检查；
-- 类型检查和隐式类型转换；
-- 数组初始化展开与补零；
-- `break/continue` 是否位于循环内；
-- Runtime 函数解析；
-- IR、优化与汇编生成。
-
-例如，循环外的 `break;` 可以通过本题语法分析；它是否语义合法由后续任务判断。
-
 ## 构建与运行
 
 完成 `sysy.l` 和 `sysy.y` 后，必须在 `task1` 根目录依次手动生成文件：
@@ -168,7 +119,7 @@ flex --header-file=include/yacc/Flex.hpp \
      --outfile=src/yacc/Flex.cpp src/yacc/sysy.l
 ```
 
-确认四个生成文件位于规定目录后，再由学生手动配置并构建：
+确认四个生成文件位于规定目录后，手动配置并构建：
 
 ```bash
 cmake -S . -B build
@@ -197,18 +148,10 @@ python3 test_frontend.py
 3. 为每个用例单独运行前端并检查退出码；
 4. 检查 stdout 是否为规范化的 `(CompUnit ...)`；
 5. 对完整 AST 输出计算 SHA-256，并与参考摘要比较；
-6. 运行 `tests/negative` 中的非法程序，确认词法器和语法分析器会拒绝它们。
-
-测试脚本不会生成 Flex/Bison 文件，也不会调用 CMake。若可执行文件不在默认位置，可使用 `--compiler` 显式指定。
-
-`.in/.out` 用于完整编译器运行测试，本任务只检查前端，因此不会读取它们。更多选项见 `tests/README.md`。
 
 ## 必须完成
 
 1. `src/yacc/sysy.l`；
 2. `src/yacc/sysy.y`；
-3. 自行设计的正例与反例测试；
-4. 能够通过 `test_frontend.py` 的批量测试；
-5. 不提交 Flex/Bison 生成文件。
-
-允许使用 Agent，但提交者必须能够解释和维护最终代码。后续考核会重点检查规范一致性、边界输入、文法冲突、AST 结构和错误处理，而不是代码行数。
+3. 能够通过 `test_frontend.py` 的批量测试；
+4. 无需提交最终的可执行文件

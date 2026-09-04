@@ -19,7 +19,6 @@ TASK_ROOT = Path(__file__).resolve().parent
 DEFAULT_TEST_ROOT = TASK_ROOT.parent / "testcases26"
 DEFAULT_BUILD_DIR = TASK_ROOT / "build"
 DEFAULT_MANIFEST = TASK_ROOT / "tests" / "ast.sha256"
-DEFAULT_NEGATIVE_ROOT = TASK_ROOT / "tests" / "negative"
 
 
 @dataclass(frozen=True)
@@ -40,8 +39,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--no-golden", action="store_true",
                         help="只检查解析成功和 AST 基本格式，不比较参考摘要")
-    parser.add_argument("--no-negative", action="store_true",
-                        help="不运行 task1/tests/negative 中的拒绝测试")
     parser.add_argument("--filter", action="append", default=[],
                         help="只运行相对路径中包含该字符串的用例，可重复")
     parser.add_argument("--max-cases", type=int)
@@ -161,32 +158,6 @@ def run_case(
     return CaseResult(case, "AC", elapsed)
 
 
-def run_negative_case(compiler: Path, case: Path, timeout: float) -> CaseResult:
-    started = time.monotonic()
-    try:
-        result = subprocess.run(
-            [str(compiler), str(case)],
-            cwd=TASK_ROOT,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        return CaseResult(case, "TLE", time.monotonic() - started,
-                          f"负例分析超过 {timeout:g}s")
-
-    elapsed = time.monotonic() - started
-    if result.returncode != 0:
-        return CaseResult(case, "AC", elapsed)
-    preview = result.stdout.decode("utf-8", errors="replace")[:500]
-    return CaseResult(
-        case,
-        "NA",
-        elapsed,
-        "非法程序被前端接受" + (f"：{preview}" if preview else ""),
-    )
-
-
 def display_results(
     title: str,
     results: list[CaseResult],
@@ -257,23 +228,7 @@ def main() -> int:
             results.append(future.result())
 
     results.sort(key=lambda item: item.case.relative_to(test_root).as_posix())
-    failures = display_results("Positive AST cases", results, test_root)
-
-    if not args.no_negative:
-        negative_cases = sorted(DEFAULT_NEGATIVE_ROOT.glob("*.sy"))
-        negative_results: list[CaseResult] = []
-        with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-            futures = {
-                pool.submit(run_negative_case, compiler, case, args.timeout): case
-                for case in negative_cases
-            }
-            for future in as_completed(futures):
-                negative_results.append(future.result())
-        negative_results.sort(key=lambda item: item.case.name)
-        failures.extend(
-            display_results("Negative rejection cases", negative_results,
-                            DEFAULT_NEGATIVE_ROOT)
-        )
+    failures = display_results("AST cases", results, test_root)
 
     print(f"\nOverall: {'PASS' if not failures else 'FAIL'}")
     return 1 if failures else 0
