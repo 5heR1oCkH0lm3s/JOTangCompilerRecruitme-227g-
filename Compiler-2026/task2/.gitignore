@@ -1,0 +1,12 @@
+/build*/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+/compile_commands.json
+/tensor-benchmark/_work/
+
+# Expected outputs and historical benchmark results are intentionally tracked.
+
+# 中端调试产生的文本 IR
+/input.ll
+/output.ll

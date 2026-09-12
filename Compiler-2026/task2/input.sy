@@ -1,0 +1,18 @@
+// VS Code 中端调试用例：输出 30。
+int square_sum(int a[], int n) {
+    int sum = 0;
+    int i = 0;
+    while (i < n) {
+        sum = sum + a[i] * a[i];
+        i = i + 1;
+    }
+    return sum;
+}
+
+int main() {
+    int a[4] = {1, 2, 3, 4};
+    int result = square_sum(a, 4);
+    putint(result);
+    putch(10);
+    return 0;
+}

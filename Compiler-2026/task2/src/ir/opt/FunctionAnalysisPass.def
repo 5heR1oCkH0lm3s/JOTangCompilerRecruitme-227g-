@@ -1,0 +1,6 @@
+#ifndef FUNCTION_ANALYSIS
+#define FUNCTION_ANALYSIS(NAME, CREATE_PASS)
+#endif
+
+FUNCTION_ANALYSIS("DominatorTree", DominantAnalysis())
+FUNCTION_ANALYSIS("LoopInfo", LoopAnalysis())
