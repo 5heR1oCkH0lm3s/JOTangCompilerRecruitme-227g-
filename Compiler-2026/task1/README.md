@@ -165,5 +165,3 @@ python3 test_frontend.py
 两条路线均遵循 [AST_FORMAT.md](docs/AST_FORMAT.md) 的节点字段、空节点、表达式包装和函数名起始行号约定；摘要包含结尾唯一 LF。测试不会把不同结构自动判为等价，适配器需保留协议所需的语法分组信息。`--compiler` 可指定自建前端路径。
 
 `tests/examples` 提供完整可读的源码/AST 对。使用 `--output-dir build/ast-debug` 保存完整实际 AST、stderr，以及可用的 expected/diff；终端显示首个不同字节的邻近内容。两组验收均可使用该选项。`--no-golden` 不属于正式通过结果。
-
-任务层级、完成清单、复现命令、自测结果和 AI/借鉴说明见 [作答与提交约定](../SUBMISSION.md)。

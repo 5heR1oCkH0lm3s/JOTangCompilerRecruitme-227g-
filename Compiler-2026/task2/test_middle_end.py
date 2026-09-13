@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""编译 SysY，前置注入运行库，再用 lli 对照 .out 校验输出和退出码。"""
+"""编译 SysY，用 llvm-as 验证原始 IR，再注入运行库并用 lli 校验输出和退出码。"""
 
 from __future__ import annotations
 
@@ -64,12 +64,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--runtime", type=Path,
                         default=TASK_ROOT / "runtime/runtime.ll", help="要前置注入的运行库 IR")
     parser.add_argument("--lli", help="lli 可执行文件路径或命令名；自动优先使用 LLVM 15+")
+    parser.add_argument("--llvm-as", help="llvm-as 路径或命令名；须与 lli 主版本一致，默认自动查找")
     parser.add_argument("--opt-level", choices=("0", "1", "2"), default="1",
                         help="传给前中端编译器的优化等级")
     parser.add_argument("--jobs", type=positive_int,
                         default=min(os.cpu_count() or 1, 4), help="并行用例数")
     parser.add_argument("--compile-timeout", type=positive_float, default=60.0,
                         help="单个用例的编译时限（秒）")
+    parser.add_argument("--verify-timeout", type=positive_float, default=60.0,
+                        help="单个用例原始 IR 验证时限（秒，不执行程序）")
     parser.add_argument("--timeout", type=positive_float, default=60.0,
                         help="单次 lli 执行时限（秒，含 JIT）")
     parser.add_argument("--filter", action="append", default=[],
@@ -80,7 +83,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def find_lli(requested: str | None) -> tuple[list[str], str]:
+def find_lli(requested: str | None) -> tuple[list[str], int]:
     names = [requested] if requested else ["lli"] + [f"lli-{v}" for v in range(22, 13, -1)]
     fallback = None
     for name in names:
@@ -101,13 +104,37 @@ def find_lli(requested: str | None) -> tuple[list[str], str]:
         command = [executable] + (["-opaque-pointers"] if version == 14 else [])
         # 不使用 lli 默认的代码生成优化等级来衡量学生的中端 pass。
         command.append("-O0")
-        candidate = (command, f"{executable} (LLVM {version})")
+        candidate = (command, version)
         if requested or version >= 15:
             return candidate
         fallback = candidate
     if fallback:
         return fallback
     raise FileNotFoundError("找不到可用的 LLVM 14+ lli，请通过 --lli 指定")
+
+
+def find_llvm_as(requested: str | None, lli: str, version: int) -> list[str]:
+    # 优先同一安装目录，再查 PATH；不能混用不同主版本的 IR 解析器。
+    directories = [Path(lli).parent, Path(lli).resolve().parent]
+    names = [requested] if requested else [
+        str(directory / name)
+        for directory in directories
+        for name in (f"llvm-as-{version}", "llvm-as")
+    ] + [f"llvm-as-{version}", "llvm-as"]
+    for name in dict.fromkeys(names):
+        executable = shutil.which(name)
+        if not executable:
+            continue
+        probe = subprocess.run([executable, "--version"], capture_output=True,
+                               text=True, timeout=10)
+        match = re.search(r"LLVM version\s+(\d+)", probe.stdout + probe.stderr)
+        if probe.returncode or not match or int(match.group(1)) != version:
+            if requested:
+                raise ValueError(f"llvm-as 必须是 LLVM {version}：{executable}")
+            continue
+        return [executable] + (["-opaque-pointers"] if version == 14 else [])
+    raise FileNotFoundError(
+        f"找不到 LLVM {version} 的 llvm-as，请安装配套工具或通过 --llvm-as 指定")
 
 
 def collect_cases(args: argparse.Namespace) -> list[Path]:
@@ -196,7 +223,7 @@ def compare_output(stdout: bytes, returncode: int, reference: bytes) -> tuple[bo
 
 
 def run_case(args: argparse.Namespace, case: Path, work: Path,
-             runtime: str, lli: list[str]) -> CaseResult:
+             runtime: str, lli: list[str], llvm_as: list[str]) -> CaseResult:
     relative = case.relative_to(args.test_root)
     name = relative.as_posix()
     # 保留 .sy 后缀，避免 foo.sy 和 foo/bar.sy 的产物目录相互覆盖。
@@ -214,8 +241,10 @@ def run_case(args: argparse.Namespace, case: Path, work: Path,
         compile_command = [str(args.compiler), str(case), "-S", "-o", str(raw_ir),
                            f"-O{args.opt_level}"]
         run_command = lli + [str(run_ir)]
+        verify_command = llvm_as + [str(raw_ir), "-o", os.devnull]
         (directory / "commands.json").write_text(json.dumps(
-            {"compile": compile_command, "run": run_command}, ensure_ascii=False, indent=2
+            {"compile": compile_command, "verify": verify_command, "run": run_command},
+            ensure_ascii=False, indent=2
         ) + "\n", encoding="utf-8")
         try:
             code, compile_seconds = execute(compile_command, directory, "compile",
@@ -227,6 +256,17 @@ def run_case(args: argparse.Namespace, case: Path, work: Path,
             return CaseResult(name, "CE", compile_seconds,
                               detail=f"编译器退出码 {code}；未成功生成 IR\n" +
                               log_tail(directory / "compile.stderr"))
+        # llvm-as 只解析并验证，不链接或执行；运行库函数的合法 declare 足够。
+        # 必须先检查原文件，避免注入时删除重复声明而掩盖无效 IR。
+        try:
+            code, _ = execute(verify_command, directory, "verify", args.verify_timeout)
+        except subprocess.TimeoutExpired:
+            return CaseResult(name, "VERIFY_TLE", compile_seconds,
+                              detail=f"原始 IR 验证超过 {args.verify_timeout:g}s")
+        if code != 0:
+            return CaseResult(name, "IR_ERROR", compile_seconds,
+                              detail=f"原始 IR 验证失败，llvm-as 退出码 {code}\n" +
+                              log_tail(directory / "verify.stderr"))
         run_ir.write_text(inject_runtime(runtime, raw_ir.read_text(encoding="utf-8")),
                           encoding="utf-8")
         input_path = case.with_suffix(".in")
@@ -269,12 +309,13 @@ def check_runtime(runtime: str, lli: list[str], work: Path) -> None:
 
 
 def run_suite(args: argparse.Namespace, cases: list[Path], runtime: str,
-              lli: list[str], work: Path) -> int:
+              lli: list[str], llvm_as: list[str], work: Path) -> int:
     check_runtime(runtime, lli, work)
     started = time.monotonic()
     results = []
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        futures = [pool.submit(run_case, args, case, work, runtime, lli) for case in cases]
+        futures = [pool.submit(run_case, args, case, work, runtime, lli, llvm_as)
+                   for case in cases]
         try:
             for future in as_completed(futures):
                 result = future.result()
@@ -299,6 +340,7 @@ def run_suite(args: argparse.Namespace, cases: list[Path], runtime: str,
     (work / "report.json").write_text(json.dumps({
         "compiler": str(args.compiler), "runtime": str(args.runtime),
         "lli_command": lli, "test_root": str(args.test_root), "opt_level": args.opt_level,
+        "verify_command": llvm_as, "verify_timeout": args.verify_timeout,
         "jobs": args.jobs, "compile_timeout": args.compile_timeout, "timeout": args.timeout,
         "comparison": "exact lines and exit code", "elapsed_seconds": elapsed,
         "counts": dict(counts), "results": [asdict(r) for r in results],
@@ -321,16 +363,18 @@ def main() -> int:
             raise ValueError("运行库 .ll 为空")
         cases = collect_cases(args)
         lli, version = find_lli(args.lli)
+        llvm_as = find_llvm_as(args.llvm_as, lli[0], version)
         print(f"[SETUP] compiler: {args.compiler}\n[SETUP] runtime: {args.runtime}\n"
-              f"[SETUP] lli: {version}\n[SETUP] cases: {len(cases)}, "
+              f"[SETUP] lli: {lli[0]} (LLVM {version})\n"
+              f"[SETUP] llvm-as: {llvm_as[0]}\n[SETUP] cases: {len(cases)}, "
               f"-O{args.opt_level}, jobs: {args.jobs}", flush=True)
         if args.output_dir:
             args.output_dir.mkdir(parents=True, exist_ok=True)
             work = Path(tempfile.mkdtemp(prefix="run-", dir=args.output_dir.resolve()))
             print(f"[SETUP] 保留产物：{work}", flush=True)
-            return run_suite(args, cases, runtime, lli, work)
+            return run_suite(args, cases, runtime, lli, llvm_as, work)
         with tempfile.TemporaryDirectory(prefix="sysy-middle-end-") as temporary:
-            return run_suite(args, cases, runtime, lli, Path(temporary))
+            return run_suite(args, cases, runtime, lli, llvm_as, Path(temporary))
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         print(f"[SETUP ERROR] {error}", file=sys.stderr)
         return 2
