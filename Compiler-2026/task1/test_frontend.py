@@ -5,6 +5,7 @@ import hashlib
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -30,10 +31,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="批量校验 testcases26 中每个 .sy 的 AST 输出。"
     )
-    parser.add_argument("--test-root", type=Path, default=DEFAULT_TEST_ROOT)
+    parser.add_argument("--examples", action="store_true", help="运行小型标准输出协议用例")
+    parser.add_argument("--test-root", type=Path)
     parser.add_argument("--compiler", type=Path,
                         default=DEFAULT_BUILD_DIR / "sysy_frontend")
-    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--golden-root", type=Path, help="可读 .ast 的根目录，与用例相对路径对应")
+    parser.add_argument("--output-dir", type=Path, help="新建独立运行目录，保存完整输出与差异")
     parser.add_argument("--no-golden", action="store_true",
                         help="只检查解析成功和 AST 基本格式，不比较参考摘要")
     parser.add_argument("--filter", action="append", default=[],
@@ -99,6 +103,8 @@ def run_case(
     expected: dict[str, str],
     timeout: float,
     compare_golden: bool,
+    golden_root: Path,
+    output_root: Path | None,
 ) -> CaseResult:
     started = time.monotonic()
     try:
@@ -114,6 +120,12 @@ def run_case(
                           f"超过 {timeout:g}s")
 
     elapsed = time.monotonic() - started
+    relative = case.relative_to(test_root).as_posix()
+    artifact = output_root / relative if output_root else None
+    if artifact:
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        Path(str(artifact) + ".actual.ast").write_bytes(result.stdout)
+        Path(str(artifact) + ".stderr").write_bytes(result.stderr)
     if result.returncode != 0:
         detail = result.stderr.decode("utf-8", errors="replace").strip()
         return CaseResult(case, "PE", elapsed, detail[-1000:])
@@ -122,7 +134,6 @@ def run_case(
         return CaseResult(case, "BAD", elapsed,
                           "stdout 不是单行 CompUnit S-expression：" + preview)
 
-    relative = case.relative_to(test_root).as_posix()
     if not compare_golden:
         return CaseResult(case, "OK", elapsed)
     reference = expected.get(relative)
@@ -132,17 +143,29 @@ def run_case(
     if actual != reference:
         actual_text = result.stdout.decode("utf-8", errors="replace")
         readable_golden = (
-            TASK_ROOT / "tests/golden" / Path(relative)
+            golden_root / Path(relative)
         ).with_suffix(".ast")
         if readable_golden.is_file():
-            expected_text = readable_golden.read_text(encoding="utf-8")
+            expected_bytes = readable_golden.read_bytes()
+            expected_text = expected_bytes.decode("utf-8")
             difference = "".join(unified_diff(
                 expected_text.splitlines(keepends=True),
                 actual_text.splitlines(keepends=True),
                 fromfile="expected.ast",
                 tofile="actual.ast",
             ))
-            comparison_detail = "\n" + difference[:4000]
+            offset = next((i for i, (left, right) in enumerate(zip(expected_bytes, result.stdout))
+                           if left != right), min(len(expected_bytes), len(result.stdout)))
+            start = max(0, offset - 80)
+            comparison_detail = (
+                f"\n首个不同字节（从 0 起）={offset}；"
+                f"期望长度={len(expected_bytes)}，实际长度={len(result.stdout)}"
+                f"\nexpected context={expected_bytes[start:offset + 160]!r}"
+                f"\nactual   context={result.stdout[start:offset + 160]!r}"
+            )
+            if artifact:
+                Path(str(artifact) + ".expected.ast").write_bytes(expected_bytes)
+                Path(str(artifact) + ".diff").write_text(difference, encoding="utf-8")
         else:
             comparison_detail = f"\nAST prefix={actual_text[:500]}"
         return CaseResult(
@@ -179,7 +202,10 @@ def display_results(
 
 def main() -> int:
     args = parse_args()
-    test_root = args.test_root.resolve()
+    examples = TASK_ROOT / "tests/examples"
+    test_root = (args.test_root or (examples if args.examples else DEFAULT_TEST_ROOT)).resolve()
+    manifest = args.manifest or (examples / "ast.sha256" if args.examples else DEFAULT_MANIFEST)
+    golden_root = (args.golden_root or (examples if args.examples else TASK_ROOT / "tests/golden")).resolve()
     compiler = args.compiler.resolve()
 
     try:
@@ -189,13 +215,17 @@ def main() -> int:
                 "请先按 README.md 手工生成 Flex/Bison 文件并完成 CMake 构建。"
             )
 
-        expected = {} if args.no_golden else load_manifest(args.manifest.resolve())
+        expected = {} if args.no_golden else load_manifest(manifest.resolve())
         if not args.no_golden and not expected:
             raise RuntimeError(
-                f"参考 AST 摘要不存在或为空：{args.manifest.resolve()}；"
+                f"参考 AST 摘要不存在或为空：{manifest.resolve()}；"
                 "若只想做解析冒烟测试，请使用 --no-golden"
             )
         cases = collect_cases(test_root, args.filter, args.max_cases)
+        output_root = None
+        if args.output_dir:
+            args.output_dir.mkdir(parents=True, exist_ok=True)
+            output_root = Path(tempfile.mkdtemp(prefix="run-", dir=args.output_dir.resolve()))
     except (OSError, RuntimeError, ValueError) as error:
         print(f"[SETUP ERROR] {error}", file=sys.stderr)
         return 2
@@ -206,6 +236,8 @@ def main() -> int:
 
     print(f"[SETUP] compiler: {compiler}")
     print(f"[SETUP] cases: {len(cases)}, jobs: {max(1, args.jobs)}")
+    if output_root:
+        print(f"[SETUP] 完整输出：{output_root}")
 
     results: list[CaseResult] = []
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
@@ -218,6 +250,8 @@ def main() -> int:
                 expected,
                 args.timeout,
                 not args.no_golden,
+                golden_root,
+                output_root,
             ): case
             for case in cases
         }

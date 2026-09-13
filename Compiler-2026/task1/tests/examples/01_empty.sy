@@ -1,0 +1,3 @@
+void empty() {}
+void done() { return; }
+int main() { int x; int a[2] = {}; ; empty(); return 0; }

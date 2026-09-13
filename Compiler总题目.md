@@ -106,7 +106,7 @@ MLIR一些辅助资料：
 
 请你阅读[SysY2022](https://gitlab.eduxiji.net/csc1/nscscc/compiler2025/-/blob/main/SysY2022%E8%AF%AD%E8%A8%80%E5%AE%9A%E4%B9%89-V1.pdf?ref_type=heads)以及[SysY Runtime](https://gitlab.eduxiji.net/csc1/nscscc/compiler2025/-/blob/main/SysY2022%E8%BF%90%E8%A1%8C%E6%97%B6%E5%BA%93-V1.pdf?ref_type=heads)，请你在对应task1目录下完成针对SySY2022语言的词法分析->语法分析->AST生成，并调用目录下的脚本进行批量测试，验证AST生成的正确性
 
-> 如果你对自己的编码能力很有自信，可以不借助本题给出的AST，自行搭建针对SYSY2022以及Runtime的从词法分析->语法分析->AST生成的整个流程
+> 可以使用给定 AST，也可以自行设计内部 AST。自建 AST 必须提供适配器，输出 [标准 S-expression 协议](Compiler-2026/task1/docs/AST_FORMAT.md) 规定的节点、空值、表达式结构与行号，统一通过原 200 个摘要用例和小型协议用例；内部类设计不影响评分。可调整入口与构建，但不能修改参考答案或以固定输出替代解析。Runtime 中的 `putf` 不在本题验收范围。
 
 **参考资料：**
 
@@ -174,15 +174,15 @@ MLIR一些辅助资料：
 
 如果你做到这一部分，相信你已经对编译器前端中端有着更加深入的了解了，在一次编译之中，传给后端的是中端的Module数据结构，这个结构本质就是优化过的内存形式的LLVM IR，那么编译器后端是如何生成对应硬件平台的汇编代码的呢，下面我们以RISCV汇编为例，进入编译器后端！
 
-**配置环境：**
+**基础运行实验与配置环境：**
 
-由于我们的笔记本大多都是arm/x86环境，所以我们需要模拟一个RISCV环境，这里我们使用qemu，请你基于下面给的链接或者使用Agent自行配置后端qemu环境
+按 [Task3 实验说明](Compiler-2026/task3/TASK3.md) 完成给出的 C/汇编混合程序交叉编译与 QEMU Linux 用户态执行。统一目标为 RV64GC、LP64D、静态链接；无需启动完整虚拟机，也无需完成自己的后端。
 
-**参考资料：**
+在 `Compiler-2026/task3` 下运行 `bash check_environment.sh`，三组输入 `17 20`、`-5 8`、`0 0` 应分别输出 `42`、`8`、`5`，退出码均为 0。报告需解释参数/返回值、栈帧、`ra` 与 `s0` 保存恢复，并先手算再验证一组独立输入。只提供 PASS 输出不算完成。
 
-- [riscv-gnu-toolchain](https://github.com/riscv-collab/riscv-gnu-toolchain/releases)
-
-- [riscv-gnu-toolchain安装](https://github.com/riscv-collab/riscv-gnu-toolchain/releases)
+- [QEMU 用户态模拟说明](https://www.qemu.org/docs/master/user/main.html)
+- [RISC-V psABI 调用约定](https://riscv-non-isa.github.io/riscv-elf-psabi-doc/)
+- [GNU RISC-V 工具链构建说明](https://github.com/riscv-collab/riscv-gnu-toolchain)
 
 **熟悉RISCV指令集&RISCV硬件特性&MIR：**
 
@@ -198,7 +198,8 @@ MLIR一些辅助资料：
 
 **所以请你：**
 
-- 阅读下述寄存器分配论文，在Markdown文档之中叙述三种寄存器分配论文思想，加上你自己的思考，然后对比分析三种寄存器分配算法的优劣
+- 解释虚拟/物理寄存器、活跃区间和 spill；从线性扫描、图着色中任选一种，用小例子说明如何处理有限寄存器。
+- 阅读下述论文、博客与源码，对比线性扫描、图着色、LLVM Greedy 的思想、spill 选择和编译开销，并加入自己的思考。不要求实现三种分配器。
 
 **参考资料：**
 
@@ -222,7 +223,9 @@ MLIR一些辅助资料：
 
 ## 提交内容
 
-请你将上述所学全部整理成Markdown文档，以及所有程序源码提交到你的Github **Public**仓库，将Github链接提交到招新网站
+请将已完成任务的报告和程序源码提交到 GitHub **Public** 仓库，将仓库链接与验收 commit 提交到招新网站。
+
+允许 AI 辅助，但须能解释生成内容与人工验证过程。不得用预期结果冒充实测结果，不提交二进制、build 目录和临时调试产物。
 
 如果对招新题有任何疑问/对Compiler感兴趣，可以随时联系出题人：3117560943(QQ)
 

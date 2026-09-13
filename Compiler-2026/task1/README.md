@@ -43,7 +43,9 @@ task1/
         └── Bison.cpp    # 生成文件
 ```
 
-`AST.hpp` 提供 AST 节点、所有权接口和 Visitor 接口。原则上不应修改其公共接口；确有必要时，应在代码注释中说明原因。
+本题支持模板 AST 和自建 AST 两条路线，统一按 [标准 AST 输出协议](docs/AST_FORMAT.md) 验收。自建 AST 须提供适配器生成规定的 S-expression；内部类和所有权设计不参与摘要比较。报告中说明接口调整与适配方法。
+
+以下 ASTRoot、Flex/Bison 生成路径及手工构建说明适用于模板路线。自建路线可以调整入口与 CMake，但必须提供同样的命令行输入和标准输出，完成真实 AST 构造；详见协议。`AST.hpp` 为模板路线提供节点、所有权接口和 Visitor 接口。
 
 `main.cpp` 和 `Frontend.hpp` 定义了统一入口及 `ASTRoot`。`ASTPrinter` 负责将生成结果输出成稳定的 S-expression。完成 `.l/.y` 后，Flex/Bison 生成文件必须位于：
 
@@ -55,6 +57,8 @@ include/yacc/Bison.hpp
 ```
 
 ## 必做功能
+
+> 注意：runtime中`putf`函数无需处理
 
 ### 1. 词法分析
 
@@ -107,7 +111,7 @@ include/yacc/Bison.hpp
 - 节点所有权清晰，不重复释放；
 - 分析失败时尽量清理尚未被 AST 接管的语义值。
 
-## 构建与运行
+## 模板路线的构建与运行
 
 完成 `sysy.l` 和 `sysy.y` 后，必须在 `task1` 根目录依次手动生成文件：
 
@@ -151,7 +155,15 @@ python3 test_frontend.py
 
 ## 必须完成
 
-1. `src/yacc/sysy.l`；
-2. `src/yacc/sysy.y`；
-3. 能够通过 `test_frontend.py` 的批量测试；
+1. 模板路线：实现 `src/yacc/sysy.l` 和 `src/yacc/sysy.y`；自建路线：提交词法/语法分析、AST 构造及标准输出适配器；
+2. 提供可复现的构建命令与报告，说明解析及适配流程；
+3. 能够通过 `python3 test_frontend.py` 的 200 个用例和 `python3 test_frontend.py --examples` 的小型协议用例；
 4. 无需提交最终的可执行文件
+
+## 自建 AST 与诊断
+
+两条路线均遵循 [AST_FORMAT.md](docs/AST_FORMAT.md) 的节点字段、空节点、表达式包装和函数名起始行号约定；摘要包含结尾唯一 LF。测试不会把不同结构自动判为等价，适配器需保留协议所需的语法分组信息。`--compiler` 可指定自建前端路径。
+
+`tests/examples` 提供完整可读的源码/AST 对。使用 `--output-dir build/ast-debug` 保存完整实际 AST、stderr，以及可用的 expected/diff；终端显示首个不同字节的邻近内容。两组验收均可使用该选项。`--no-golden` 不属于正式通过结果。
+
+任务层级、完成清单、复现命令、自测结果和 AI/借鉴说明见 [作答与提交约定](../SUBMISSION.md)。

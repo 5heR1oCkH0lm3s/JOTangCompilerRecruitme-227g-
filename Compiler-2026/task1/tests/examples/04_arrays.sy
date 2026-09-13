@@ -1,0 +1,2 @@
+const int n = 2;
+int main() { int a[2][2] = {{1}, {2, 3}}; a[1][0] = n; return a[0][0]; }

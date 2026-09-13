@@ -1,0 +1,1 @@
+(CompUnit (FuncDef int "main" (None) (Block (BlockItemList (ReturnStmt (AddExp (Ops + -) (MulExp (Ops) (UnaryExp (Ops) (Int 1))) (MulExp (Ops *) (UnaryExp (Ops) (Int 2)) (UnaryExp (Ops) (Int 3))) (MulExp (Ops / %) (UnaryExp (Ops) (Int 4)) (UnaryExp (Ops) (Int 2)) (UnaryExp (Ops) (Int 2)))))))))

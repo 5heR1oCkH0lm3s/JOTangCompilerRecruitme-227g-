@@ -1,0 +1,11 @@
+int main() {
+  putint /* name starts on line 2 */
+  (
+    getint
+    ()
+  );
+  starttime
+  ();
+  stoptime();
+  return 0;
+}
