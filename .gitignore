@@ -7,3 +7,5 @@
 
 # Flex/Bison 生成文件由学生手工运行命令生成，不作为作答源文件提交。
 Compiler-2026/task1/src/yacc/*.output
+
+.vscode/
