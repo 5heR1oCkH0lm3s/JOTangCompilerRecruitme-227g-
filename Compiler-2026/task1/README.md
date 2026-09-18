@@ -1,3 +1,5 @@
+>实现报告见 ./_report/
+
 # Task 1：使用 Flex/Bison 构建 SysY2022 前端
 
 ## 任务目标
