@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cmake-configure",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["-S", ".", "-B", "build"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "build-middle-end",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--build", "build", "-j", "8"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "cmake-configure",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$gcc"]
+    }
+  ]
+}
