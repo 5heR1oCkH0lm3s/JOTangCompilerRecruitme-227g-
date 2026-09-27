@@ -130,4 +130,8 @@
 
 ## Q12
 
-* o.0
+* 如何实现：作者借用 MLIR 的`Operation/Value/Region/Block/Attribute`抽象，让每个 Op 携带操作数、返回值、属性和可嵌套 Region，从而在自定义 IR 中保留结构化控制流。
+
+* 是否兼容 SCF：第一层 IR 只是参考`scf`方言，并不真正兼容 SCF，因为它没有 MLIR 的 Op 注册、标准类型系统、`BlockArgument`、`iter_args`和`scf.yield`等必要机制。
+
+* 高层 IR 优化及作用：作者在结构化`pre-opt`IR 上实现了常量折叠、函数内联、尾递归优化、`While`到`For`提升、内存访问简化、无用循环删除、数组布局重排和并行性分析等优化，用于减少计算与访存开销、暴露循环语义并提高后续 lowering 和代码生成效率。
